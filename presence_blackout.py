@@ -35,10 +35,14 @@ user32, kernel32, gdi32 = ctypes.windll.user32, ctypes.windll.kernel32, ctypes.w
 shell32, dwmapi, winmm = ctypes.windll.shell32, ctypes.windll.dwmapi, ctypes.windll.winmm
 
 APP_NAME = "Presence Blackout"
-HERE = os.path.dirname(os.path.abspath(__file__))
-LOG_FILE = os.path.join(HERE, "presence_blackout.log")
-SETTINGS_FILE = os.path.join(HERE, "presence_blackout_settings.json")
-ICON_FILE = os.path.join(HERE, "presence_blackout.ico")
+FROZEN = getattr(sys, "frozen", False)  # running as the packaged PresenceBlackout.exe
+# The .exe keeps its settings in %APPDATA% so it works from anywhere; the script keeps them beside itself.
+DATA_DIR = (os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PresenceBlackout") if FROZEN
+            else os.path.dirname(os.path.abspath(__file__)))
+os.makedirs(DATA_DIR, exist_ok=True)
+LOG_FILE = os.path.join(DATA_DIR, "presence_blackout.log")
+SETTINGS_FILE = os.path.join(DATA_DIR, "presence_blackout_settings.json")
+ICON_FILE = os.path.join(DATA_DIR, "presence_blackout.ico")
 
 TICK_MS = 100
 SEEN_GRACE_S = 1.0     # a head/gaze sample keeps you "present" for this long
@@ -205,6 +209,8 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
 def startup_command():
+    if FROZEN:
+        return f'"{sys.executable}" --background'
     exe = sys.executable
     pyw = os.path.join(os.path.dirname(exe), "pythonw.exe")
     return f'"{pyw if os.path.exists(pyw) else exe}" "{os.path.abspath(__file__)}" --background'

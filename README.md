@@ -6,6 +6,16 @@ It looks for your **head and eyes**, not where you're looking, so glancing at an
 
 ![Black out settings](screenshots/1-black-out.png)
 
+## Download
+
+**[⬇ Download PresenceBlackout.exe](https://github.com/Adaaks/Tobii-Tracker-5-Presence-Blackout/releases/latest/download/PresenceBlackout.exe)** — no install, no Python needed. Just double-click it.
+
+You need a **Tobii Eye Tracker 5** with **Tobii Experience** installed (Windows 10 or 11).
+
+> Windows may show *"Windows protected your PC"* the first time, because the app isn't signed. Click **More info → Run anyway**.
+
+The app opens its settings window and adds an icon to the system tray (by the clock). Settings are saved in `%APPDATA%\PresenceBlackout`.
+
 ## Features
 
 - **Presence detection** – uses the tracker's head and eye tracking plus your keyboard and mouse. Your screens only go black when *none* of them say you're there.
@@ -25,23 +35,20 @@ It looks for your **head and eyes**, not where you're looking, so glancing at an
 | ![Dim, then black](screenshots/2-dim-then-black.png) | ![Screens](screenshots/3-screens.png) |
 | ![Lock](screenshots/4-lock.png) | ![General](screenshots/5-general.png) |
 
-## Requirements
+## Run from source
+
+Prefer Python? You'll need:
 
 - Windows 10 or 11
 - A **Tobii Eye Tracker 5** with **Tobii Experience** installed (it provides `tobii_stream_engine.dll`, which this app uses to talk to the tracker)
 - **Python 3.10+**
 
-## Install
+Then:
 
 ```bash
 git clone https://github.com/Adaaks/Tobii-Tracker-5-Presence-Blackout.git
 cd Tobii-Tracker-5-Presence-Blackout
 pip install -r requirements.txt
-```
-
-## Run
-
-```bash
 pythonw presence_blackout.py
 ```
 
@@ -71,7 +78,7 @@ Shortcuts: **Ctrl + Alt + B** black out now · **Ctrl + Alt + End** quit.
 - **The Windows lock screen can't be covered** by any app. With *Keep the screens dark while locked* on, the displays are switched off instead while you're away, and switched back on when you return.
 - **"Power the displays off"** uses the monitors' own power saving, so it affects every screen and waking takes a second or two.
 - If the tracker sometimes loses you for a moment (for example when you turn far towards a side monitor), a short wait like **2–4 s** avoids brief accidental blackouts.
-- Settings are saved next to the app in `presence_blackout_settings.json`, and events (black out, wake, lock, tracker connected/disconnected) in `presence_blackout.log`.
+- Settings are saved in `presence_blackout_settings.json` (in `%APPDATA%\PresenceBlackout` for the .exe, next to the script otherwise), and events (black out, wake, lock, tracker connected/disconnected) in `presence_blackout.log`.
 
 ## Privacy
 
