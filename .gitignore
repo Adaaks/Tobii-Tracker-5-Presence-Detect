@@ -1,10 +1,12 @@
 # personal settings and logs
+presence_detect_settings.json
+presence_detect.log
+presence_detect.log.old
 presence_blackout_settings.json
-presence_blackout.log
-presence_blackout.log.old
+presence_blackout.log*
 
 # generated on first run
-presence_blackout.ico
+*.ico
 
 __pycache__/
 *.pyc

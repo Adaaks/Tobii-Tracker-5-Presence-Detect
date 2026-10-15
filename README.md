@@ -1,39 +1,61 @@
-# Tobii Tracker 5 – Presence Blackout
+# Tobii Tracker 5 – Presence Detect
 
-Turns your monitors **pure black the moment you leave your desk**, and brings them back the moment you sit down — using the **Tobii Eye Tracker 5** to sense whether you're there.
+**Lock your PC and/or black out your screens when you walk away** — using the **Tobii Eye Tracker 5** to sense whether you're at your desk.
 
-It looks for your **head and eyes**, not where you're looking, so glancing at another monitor never triggers it. Great for OLED screens (no burn-in from a static desktop while you grab a coffee), privacy, and saving power.
+It watches for your **head and eyes**, not where you're looking, so reading another monitor never sets anything off. Using the keyboard or mouse also counts as being there.
 
-![Black out settings](screenshots/1-black-out.png)
+Two features, each with its own on/off switch — use either one, or both:
+
+- 🔒 **Lock my PC when I walk away** — Windows locks itself after you've been gone for the time you choose. Nobody can use your PC while you're away.
+- 🌙 **Black out my screens when I walk away** — your screens turn pure black and come back the moment you sit down. Protects OLED screens from burn-in and saves power.
+
+![Home](screenshots/1-home.png)
 
 ## Download
 
-**[⬇ Download PresenceBlackout.exe](https://github.com/Adaaks/Tobii-Tracker-5-Presence-Blackout/releases/latest/download/PresenceBlackout.exe)** — no install, no Python needed. Just double-click it.
+**[⬇ Download PresenceDetect.exe](https://github.com/Adaaks/Tobii-Tracker-5-Presence-Detect/releases/latest/download/PresenceDetect.exe)** — no install, no Python needed. Just double-click it.
 
 You need a **Tobii Eye Tracker 5** with **Tobii Experience** installed (Windows 10 or 11).
 
 > Windows may show *"Windows protected your PC"* the first time, because the app isn't signed. Click **More info → Run anyway**.
 
-The app opens its settings window and adds an icon to the system tray (by the clock). Settings are saved in `%APPDATA%\PresenceBlackout`.
+The app opens its settings window and adds an icon to the system tray (by the clock). Settings are saved in `%APPDATA%\PresenceDetect`.
 
 ## Features
 
-- **Presence detection** – uses the tracker's head and eye tracking plus your keyboard and mouse. Your screens only go black when *none* of them say you're there.
-- **You choose the timing** – instantly, a few seconds, minutes, or type any value (`45s`, `2m`, …).
-- **Smooth transitions** – instant, a fade, or *dim then black* (a heads-up dim before it goes fully black). The fade runs at your monitor's refresh rate.
-- **Pick your screens** – click the screens on a map to include or leave them out.
-- **Black screen or power off** – cover the screens with pure black (instant wake), or use the monitors' own power saving. Optionally power the displays off after they've been black for a while.
-- **Optional auto-lock** – lock Windows after you've been away for a while, and keep the displays dark on the lock screen until you return.
-- **Lives in the system tray**, starts with Windows, and uses very little CPU (well under 1% of one core) and about 30 MB of RAM.
-- **Works alongside games** – it only reads from the tracker, so Tobii game integration keeps working, and the black screens never steal focus.
-- **No tracker? No problem** – if the Tobii is unplugged it says so, falls back to a normal 5-minute keyboard/mouse screensaver, and reconnects by itself when you plug it back in.
+**Lock**
+- Lock after 15 seconds, 30 seconds, 1 minute … 1 hour, or type your own (`90s`, `10m`, …)
+- Works on its own — your screens don't have to go black
+- **Keep the screens dark while locked** — the Windows lock screen can't be covered, so the displays are switched off while you're away and back on when you return
+
+**Black out**
+- Go black instantly, after a few seconds, after minutes, or type your own
+- **Instant**, **fade out**, or **dim, then black** (a heads-up dim before it goes fully black) — the fade runs at your monitor's refresh rate
+- Pick which screens go black on a map of your monitors
+- Black screen (instant wake) or use your monitors' own power saving
+- Optionally power the displays off after they've been black for a while
+
+**Everything else**
+- **Lock now** and **Black out now** buttons, in the app and in the tray menu
+- Lives in the system tray, starts with Windows, and uses very little CPU (well under 1% of one core) and about 30 MB of RAM
+- **Works alongside games** — it only reads from the tracker, so Tobii game integration keeps working, and the black screens never steal focus
+- **Tracker unplugged?** It tells you, goes by keyboard and mouse only (waiting at least 5 minutes), and reconnects by itself when you plug it back in
 
 ## Screenshots
 
 | | |
 |---|---|
-| ![Dim, then black](screenshots/2-dim-then-black.png) | ![Screens](screenshots/3-screens.png) |
-| ![Lock](screenshots/4-lock.png) | ![General](screenshots/5-general.png) |
+| ![Lock](screenshots/2-lock.png) | ![Black out](screenshots/3-black-out.png) |
+| ![Screens](screenshots/4-screens.png) | ![General](screenshots/5-general.png) |
+
+## Default settings
+
+| Setting | Default |
+|---|---|
+| Lock my PC when I walk away | **Off** (locks after 5 minutes when switched on) |
+| Black out my screens when I walk away | On — instantly, no transition |
+| Screens | All |
+| Start with Windows | On |
 
 ## Run from source
 
@@ -46,10 +68,10 @@ Prefer Python? You'll need:
 Then:
 
 ```bash
-git clone https://github.com/Adaaks/Tobii-Tracker-5-Presence-Blackout.git
-cd Tobii-Tracker-5-Presence-Blackout
+git clone https://github.com/Adaaks/Tobii-Tracker-5-Presence-Detect.git
+cd Tobii-Tracker-5-Presence-Detect
 pip install -r requirements.txt
-pythonw presence_blackout.py
+pythonw presence_detect.py
 ```
 
 The settings window opens and an icon appears in the system tray (by the clock). Closing the window keeps it running in the tray — click the tray icon to open it again. With **Start with Windows** on (the default), it starts quietly in the tray every time you sign in.
@@ -57,38 +79,28 @@ The settings window opens and an icon appears in the system tray (by the clock).
 Other options:
 
 ```bash
-pythonw presence_blackout.py --background   # start hidden in the tray
-python presence_blackout.py --test          # live readout of what it senses (never blacks out)
+pythonw presence_detect.py --background   # start hidden in the tray
+python presence_detect.py --test          # live readout of what it senses (takes no action)
 ```
 
 Shortcuts: **Ctrl + Alt + B** black out now · **Ctrl + Alt + End** quit.
 
-## Default settings
-
-| Setting | Default |
-|---|---|
-| Wait before black out | Instantly |
-| How the screens go black | Instantly |
-| Screens | All |
-| Lock my PC when I'm away | **Off** |
-| Start with Windows | On |
-
 ## Good to know
 
-- **The Windows lock screen can't be covered** by any app. With *Keep the screens dark while locked* on, the displays are switched off instead while you're away, and switched back on when you return.
+- If the tracker sometimes loses you for a moment (for example when you turn far towards a side monitor), a short wait like **2–4 s** before blacking out avoids brief accidental blackouts. For locking, a minute or more is usually comfortable.
 - **"Power the displays off"** uses the monitors' own power saving, so it affects every screen and waking takes a second or two.
-- If the tracker sometimes loses you for a moment (for example when you turn far towards a side monitor), a short wait like **2–4 s** avoids brief accidental blackouts.
-- Settings are saved in `presence_blackout_settings.json` (in `%APPDATA%\PresenceBlackout` for the .exe, next to the script otherwise), and events (black out, wake, lock, tracker connected/disconnected) in `presence_blackout.log`.
+- Settings are saved in `presence_detect_settings.json` (in `%APPDATA%\PresenceDetect` for the .exe, next to the script otherwise), and events (lock, black out, wake, tracker connected/disconnected) in `presence_detect.log`.
+- Coming from **Presence Blackout** (the old name)? Your settings are picked up automatically.
 
 ## Privacy
 
-Everything runs locally. Nothing is sent anywhere, and no gaze or head data is stored — the log only records events like "black out" and "wake".
+Everything runs locally. Nothing is sent anywhere, and no gaze or head data is stored — the log only records events like "lock", "black out" and "wake".
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `presence_blackout.py` | The app |
+| `presence_detect.py` | The app |
 | `tobii_stream.py` | Small reader for the Tobii Stream Engine (presence, head and gaze) |
 
 *Not affiliated with or endorsed by Tobii. Tobii and Tobii Eye Tracker 5 are trademarks of Tobii AB.*

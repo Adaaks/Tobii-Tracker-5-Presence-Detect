@@ -1,13 +1,15 @@
-"""Presence Blackout - turn your monitors black when you leave your desk.
+"""Presence Detect - lock your PC and/or black out your screens when you walk away.
 
-Uses the Tobii Eye Tracker 5 to sense whether you're *sitting there* (Tobii's
-presence signal + head tracking), not where you're looking - so reading your
-other monitors never triggers it. Keyboard and mouse use also count as being
-there. Wakes instantly when you come back.
+Uses the Tobii Eye Tracker 5 to sense whether you're *sitting there* (head and eye
+tracking), not where you're looking - so reading your other monitors never triggers
+it. Keyboard and mouse use also count as being there. Two independent features:
 
-    pythonw presence_blackout.py               # open the app (lives in the tray)
-    pythonw presence_blackout.py --background  # start hidden in the tray (used at login)
-    python presence_blackout.py --test         # console readout of what it senses, never blanks
+  * Lock: locks Windows after you've been away for a while.
+  * Black out: turns your screens black (great for OLED), and wakes them when you return.
+
+    pythonw presence_detect.py               # open the app (lives in the tray)
+    pythonw presence_detect.py --background  # start hidden in the tray (used at login)
+    python presence_detect.py --test         # console readout of what it senses, does nothing
 
 Shortcuts: Ctrl+Alt+B black out now, Ctrl+Alt+End quit.
 """
@@ -34,20 +36,25 @@ from tobii_stream import PRESENCE_PRESENT, TobiiStream  # noqa: E402
 user32, kernel32, gdi32 = ctypes.windll.user32, ctypes.windll.kernel32, ctypes.windll.gdi32
 shell32, dwmapi, winmm = ctypes.windll.shell32, ctypes.windll.dwmapi, ctypes.windll.winmm
 
-APP_NAME = "Presence Blackout"
-FROZEN = getattr(sys, "frozen", False)  # running as the packaged PresenceBlackout.exe
+APP_NAME = "Presence Detect"
+FROZEN = getattr(sys, "frozen", False)  # running as the packaged PresenceDetect.exe
 # The .exe keeps its settings in %APPDATA% so it works from anywhere; the script keeps them beside itself.
-DATA_DIR = (os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PresenceBlackout") if FROZEN
+APPDATA = os.environ.get("APPDATA") or os.path.expanduser("~")
+DATA_DIR = (os.path.join(APPDATA, "PresenceDetect") if FROZEN
             else os.path.dirname(os.path.abspath(__file__)))
 os.makedirs(DATA_DIR, exist_ok=True)
-LOG_FILE = os.path.join(DATA_DIR, "presence_blackout.log")
-SETTINGS_FILE = os.path.join(DATA_DIR, "presence_blackout_settings.json")
-ICON_FILE = os.path.join(DATA_DIR, "presence_blackout.ico")
+LOG_FILE = os.path.join(DATA_DIR, "presence_detect.log")
+SETTINGS_FILE = os.path.join(DATA_DIR, "presence_detect_settings.json")
+ICON_FILE = os.path.join(DATA_DIR, "presence_detect.ico")
+# settings from before the app was renamed (Presence Blackout) are picked up automatically
+OLD_SETTINGS_FILES = [os.path.join(DATA_DIR, "presence_blackout_settings.json"),
+                      os.path.join(APPDATA, "PresenceBlackout", "presence_blackout_settings.json")]
 
 TICK_MS = 100
 SEEN_GRACE_S = 1.0     # a head/gaze sample keeps you "present" for this long
 WAKE_CONFIRM_S = 0.3   # tracker must see you this long to wake (ignores one-frame glitches)
 RETRY_TRACKER_S = 5    # retry connecting if the tracker / Tobii service isn't available
+CONNECT_GRACE_S = 2    # right after (re)connecting, assume you're here until the first data arrives
 REBUILD_AFTER_S = 5    # a lost connection that hasn't come back by itself is rebuilt from scratch
 LOCK_CHECK_S = 1.0     # how often to check whether Windows is locked
 NO_TRACKER_AWAY_S = 300  # tracker unplugged: fall back to a normal screensaver (keyboard/mouse idle)
@@ -55,8 +62,8 @@ REPEAT_OFF_S = 15      # re-send "displays off" this often while away (in case s
 
 BLACKOUT_PRESETS = [(0, "Instantly"), (2, "2 s"), (4, "4 s"), (6, "6 s"), (8, "8 s"), (10, "10 s"),
                     (15, "15 s"), (30, "30 s"), (60, "1 min"), (300, "5 min"), (600, "10 min")]
-LOCK_PRESETS = [(60, "1 min"), (120, "2 min"), (180, "3 min"), (300, "5 min"), (600, "10 min"),
-                (900, "15 min"), (1800, "30 min"), (3600, "1 hour")]
+LOCK_PRESETS = [(15, "15 s"), (30, "30 s"), (60, "1 min"), (120, "2 min"), (300, "5 min"),
+                (600, "10 min"), (900, "15 min"), (1800, "30 min"), (3600, "1 hour")]
 FADE_PRESETS = [(0.5, "0.5 s"), (1, "1 s"), (2, "2 s"), (3, "3 s"), (5, "5 s")]
 DIM_OVER_PRESETS = [(1, "1 s"), (2, "2 s"), (3, "3 s"), (5, "5 s")]
 DIM_LEVEL_PRESETS = [(0.3, "30%"), (0.5, "50%"), (0.7, "70%"), (0.85, "85%")]
@@ -65,8 +72,9 @@ FINAL_PRESETS = [(0, "Instant"), (0.5, "0.5 s"), (1, "1 s"), (2, "2 s")]
 OFF_AFTER_PRESETS = [(0, "Never"), (60, "1 min"), (300, "5 min"), (900, "15 min"), (1800, "30 min")]
 
 DEFAULTS = {
+    "blackout": True,           # feature: black out the screens when away
     "away": 0,                  # seconds away before blacking out
-    "paused": False,
+    "paused": False,            # tray "Pause": both features on hold
     "transition": "instant",    # instant | fade | dim
     "fade_s": 1.0,              # fade: length of the fade
     "dim_s": 2.0,               # dim first: how long the dim takes
@@ -77,7 +85,7 @@ DEFAULTS = {
     "excluded": [],             # monitors left alone
     "displays_off_after": 0,    # while black, also power the displays off after this long (0 = never)
     "wake_on_presence": True,   # waking: tracker seeing you counts, not just keyboard/mouse
-    "lock": False,              # lock Windows when away
+    "lock": False,              # feature: lock Windows when away
     "lock_after": 300,
     "lock_black": True,         # displays off on the lock screen while away
     "startup": True,
@@ -110,11 +118,17 @@ def log(msg):
 
 
 def load_settings():
-    try:
-        with open(SETTINGS_FILE) as f:
-            return {**DEFAULTS, **json.load(f)}
-    except (OSError, ValueError):
-        return dict(DEFAULTS)
+    for path in [SETTINGS_FILE] + OLD_SETTINGS_FILES:
+        try:
+            with open(path) as f:
+                saved = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if "blackout" not in saved and "paused" in saved:
+            # old versions used "paused" as the black-out on/off switch
+            saved["blackout"], saved["paused"] = not saved["paused"], False
+        return {**DEFAULTS, **saved}
+    return dict(DEFAULTS)
 
 
 def save_settings(settings):
@@ -220,12 +234,16 @@ def set_startup(on):
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
             if on:
-                winreg.SetValueEx(k, "PresenceBlackout", 0, winreg.REG_SZ, startup_command())
+                winreg.SetValueEx(k, "PresenceDetect", 0, winreg.REG_SZ, startup_command())
             else:
                 try:
-                    winreg.DeleteValue(k, "PresenceBlackout")
+                    winreg.DeleteValue(k, "PresenceDetect")
                 except FileNotFoundError:
                     pass
+            try:
+                winreg.DeleteValue(k, "PresenceBlackout")  # entry from before the rename
+            except FileNotFoundError:
+                pass
     except OSError as e:
         log(f"startup setting failed: {e}")
 
@@ -257,7 +275,7 @@ user32.SetCursor.argtypes = [wt.HANDLE]
 gdi32.GetStockObject.restype = wt.HGDIOBJ
 kernel32.GetModuleHandleW.restype = wt.HMODULE
 
-OVERLAY_CLASS = "PresenceBlackoutOverlay"
+OVERLAY_CLASS = "PresenceDetectOverlay"
 WS_POPUP = 0x80000000
 WS_EX = 0x00000008 | 0x00000080 | 0x00080000 | 0x08000000  # TOPMOST | TOOLWINDOW | LAYERED | NOACTIVATE
 HWND_TOPMOST = wt.HWND(-1)
@@ -451,6 +469,7 @@ class Engine:
         self.panel_off = False  # displays powered off while blacked out
         self.last_off, self.off_by_us = -1e9, False
         self.locked, self._lock_checked = False, -1e9
+        self.connected_since = None
         self.status = {}
 
     def black_out(self, now, manual=False):
@@ -486,6 +505,12 @@ class Engine:
         s = self.s
         self.tracker.poll(now)
         sensed, info = self.tracker.signals(now)
+        if self.tracker.connected:
+            self.connected_since = self.connected_since or now
+            if now - self.connected_since < CONNECT_GRACE_S:
+                sensed = True  # no data yet - don't mistake that for you having left
+        else:
+            self.connected_since = None
         if sensed:
             self.last_seen = now
             self.sensed_since = self.sensed_since or now
@@ -502,6 +527,7 @@ class Engine:
         # Without the tracker only keyboard/mouse say you're here, so a short delay would
         # black out every time you stop typing for a second - use a screensaver-style wait.
         delay = s["away"] if self.tracker.connected else max(s["away"], NO_TRACKER_AWAY_S)
+        lock_delay = s["lock_after"] if self.tracker.connected else max(s["lock_after"], NO_TRACKER_AWAY_S)
         self.status = {"info": info, "sensed": sensed, "idle": idle, "away": away, "locked": locked,
                        "connected": self.tracker.connected, "active": self.active}
         if self.dry:
@@ -523,11 +549,8 @@ class Engine:
             return
         self.off_by_us = False
 
-        if s["lock"] and not s["paused"] and away >= s["lock_after"]:
-            log("LOCK")
-            self.wake("locking")
-            lock_pc()
-            self.last_off = -1e9
+        if s["lock"] and not s["paused"] and away >= lock_delay:
+            self.lock_now("away for a while")
             return
 
         if self.active:
@@ -553,8 +576,14 @@ class Engine:
                 displays_off()
                 self.panel_off, self.last_off = True, now
             self.overlay.keep_on_top(now)
-        elif not s["paused"] and away >= max(delay, 0.3):
+        elif s["blackout"] and not s["paused"] and away >= max(delay, 0.3):
             self.black_out(now)
+
+    def lock_now(self, reason="manual"):
+        log(f"LOCK ({reason})")
+        self.wake("locking")
+        lock_pc()
+        self.last_off = -1e9
 
     def stop(self):
         self.overlay.hide()
@@ -590,9 +619,10 @@ def start_tray(engine, requests):
         save_settings(s)
         log("paused" if s["paused"] else "resumed")
 
-    icon = pystray.Icon("PresenceBlackout", tray_image(TRAY_GREEN), APP_NAME, Menu(
-        Item("Open Presence Blackout", lambda *_: requests.__setitem__("open", True), default=True),
+    icon = pystray.Icon("PresenceDetect", tray_image(TRAY_GREEN), APP_NAME, Menu(
+        Item("Open Presence Detect", lambda *_: requests.__setitem__("open", True), default=True),
         Menu.SEPARATOR,
+        Item("Lock now", lambda *_: requests.__setitem__("lock_now", True)),
         Item("Black out now", lambda *_: requests.__setitem__("blackout_now", True)),
         Item("Pause", toggle_pause, checked=lambda _item: s["paused"]),
         Menu.SEPARATOR,
@@ -622,7 +652,7 @@ RED = "#F06A6A"
 
 
 ICON_FONTS = [r"C:\Windows\Fonts\SegoeIcons.ttf", r"C:\Windows\Fonts\segmdl2.ttf"]  # Win 11, Win 10
-GLYPHS = {"blackout": "\uE708", "screens": "\uE7F4", "lock": "\uE72E", "general": "\uE713"}
+GLYPHS = {"home": "\uE80F", "blackout": "\uE708", "screens": "\uE7F4", "lock": "\uE72E", "general": "\uE713"}
 
 
 def glyph_image(ctk, glyph, color, size=18):
@@ -766,7 +796,8 @@ def pct(v):
 
 
 class App:
-    PAGES = [("blackout", "Black out"), ("screens", "Screens"), ("lock", "Lock"), ("general", "General")]
+    PAGES = [("home", "Home"), ("lock", "Lock"), ("blackout", "Black out"), ("screens", "Screens"),
+             ("general", "General")]
 
     def __init__(self, root, engine, requests):
         import customtkinter as ctk
@@ -926,9 +957,17 @@ class App:
             lb = ctk.CTkLabel(sens, text=f"\u25CF {label}", font=F["small"], text_color=FAINT)
             lb.pack(side="left", padx=(0, 8))
             self.sensor_labels[key] = lb
-        ctk.CTkButton(sti, text="Black out now", height=36, corner_radius=8, font=F["chip"],
+        btns = ctk.CTkFrame(sti, fg_color="transparent")
+        btns.pack(fill="x")
+        btns.grid_columnconfigure((0, 1), weight=1, uniform="b")
+        ctk.CTkButton(btns, text="Lock now", height=36, width=20, corner_radius=8, font=F["chip"],
+                      fg_color=CHIP, hover_color=CHIP_HOVER,
+                      command=lambda: self.requests.__setitem__("lock_now", True)).grid(row=0, column=0, sticky="ew",
+                                                                                         padx=(0, 4))
+        ctk.CTkButton(btns, text="Black out", height=36, width=20, corner_radius=8, font=F["chip"],
                       fg_color=ACCENT, hover_color=ACCENT_HOVER,
-                      command=lambda: self.requests.__setitem__("blackout_now", True)).pack(fill="x")
+                      command=lambda: self.requests.__setitem__("blackout_now", True)).grid(row=0, column=1,
+                                                                                             sticky="ew", padx=(4, 0))
 
         # ---------- content
         content = ctk.CTkFrame(root, fg_color="transparent")
@@ -949,15 +988,64 @@ class App:
             p.grid(row=1, column=0, sticky="nsew", padx=(28, 16), pady=(4, 20))
             p.grid_remove()
             self.pages[key] = p
+        self._build_home(self.pages["home"])
         self._build_blackout(self.pages["blackout"])
         self._build_screens(self.pages["screens"])
         self._build_lock(self.pages["lock"])
         self._build_general(self.pages["general"])
 
+    def feature_card(self, parent, glyph, title, desc, key, page):
+        """Big on/off card for one of the two features, with a summary and a link to its settings."""
+        ctk, F = self.ctk, self.F
+        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=14, border_width=1, border_color=CARD_BORDER)
+        f.pack(fill="x", pady=(0, 14))
+        row = ctk.CTkFrame(f, fg_color="transparent")
+        row.pack(fill="x", padx=22, pady=20)
+        ctk.CTkLabel(row, text="", image=glyph_image(ctk, glyph, (76, 141, 255, 255), 28)).pack(side="left",
+                                                                                               padx=(0, 18))
+        var = ctk.BooleanVar(value=bool(self.s[key]))
+        self.switch_vars.append((var, key, False))
+
+        def changed():
+            self.s[key] = var.get()
+            save_settings(self.s)
+            log(f"setting {key} = {self.s[key]}")
+            self.refresh_all()
+        ctk.CTkSwitch(row, text="", variable=var, command=changed, progress_color=ACCENT, width=50,
+                      switch_width=46, switch_height=24).pack(side="right", padx=(16, 0))
+        ctk.CTkButton(row, text="Settings  \u203A", width=96, height=32, corner_radius=8, font=F["chip"],
+                      fg_color=CHIP, hover_color=CHIP_HOVER,
+                      command=lambda: self.select_page(page)).pack(side="right")
+        txt = ctk.CTkFrame(row, fg_color="transparent")
+        txt.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(txt, text=title, font=ctk.CTkFont("Segoe UI Semibold", 17), text_color=TEXT,
+                     anchor="w").pack(fill="x")
+        ctk.CTkLabel(txt, text=desc, font=F["desc"], text_color=MUTED, anchor="w", justify="left",
+                     wraplength=int(480 * self.scale)).pack(fill="x", pady=(2, 0))
+        summary = ctk.CTkLabel(txt, text="", font=F["sentence"], text_color=ACCENT, anchor="w")
+        summary.pack(fill="x", pady=(6, 0))
+        return summary
+
+    def _build_home(self, page):
+        ctk, F = self.ctk, self.F
+        self.lock_summary = self.feature_card(
+            page, GLYPHS["lock"], "Lock my PC when I walk away",
+            "Keeps your PC safe when you leave it. Windows locks itself, so nobody can use it.", "lock", "lock")
+        self.blackout_summary = self.feature_card(
+            page, GLYPHS["blackout"], "Black out my screens when I walk away",
+            "Turns your screens black and brings them back when you sit down. Protects OLED screens "
+            "from burn-in and saves power.", "blackout", "blackout")
+        c = self.card(page, "How it works")
+        ctk.CTkLabel(c, text=("Your Tobii Eye Tracker 5 watches for your head and eyes \u2014 not where you're "
+                              "looking \u2014 so reading another monitor never sets anything off. Using the "
+                              "keyboard or mouse also counts as being here."),
+                     font=F["desc"], text_color=MUTED, anchor="w", justify="left",
+                     wraplength=int(720 * self.scale)).pack(fill="x", pady=(4, 0))
+
     def _build_blackout(self, page):
         ctk, F = self.ctk, self.F
-        self.v_enabled = self.switch_card(page, "Black out automatically",
-                                          "Turn your screens black when you leave your desk.", "paused", invert=True)
+        self.switch_card(page, "Black out my screens when I walk away",
+                         "Turn your screens black when you leave your desk.", "blackout")
 
         c = self.card(page, "How long to wait", "After you leave, wait this long before the screens go black.")
         self.sentence = ctk.CTkLabel(c, text="", font=F["sentence"], text_color=ACCENT, anchor="w")
@@ -1014,11 +1102,16 @@ class App:
         self.off_note.pack(fill="x", pady=(6, 0))
 
     def _build_lock(self, page):
-        self.switch_card(page, "Lock my PC when I'm away",
-                         "Windows locks itself, so you'll need your PIN, password or face to get back in.", "lock")
+        ctk, F = self.ctk, self.F
+        self.switch_card(page, "Lock my PC when I walk away",
+                         "Windows locks itself, so you'll need your PIN, password or face to get back in. "
+                         "Works on its own \u2014 your screens don't have to go black.", "lock")
         c = self.card(page, "Lock after", "How long you can be away before the PC locks.")
-        self.lock_row = OptionRow(self, c, None, "lock_after", LOCK_PRESETS, 5, 60, short, 60, 24 * 3600, "45m")
-        self.lock_row.pack(pady=(8, 0))
+        self.lock_sentence = ctk.CTkLabel(c, text="", font=F["sentence"], text_color=ACCENT, anchor="w")
+        self.lock_sentence.pack(fill="x", pady=(10, 0))
+        self.lock_row = OptionRow(self, c, None, "lock_after", LOCK_PRESETS, 5, 60, short, 5, 24 * 3600,
+                                  "90s or 10m")
+        self.lock_row.pack(pady=(6, 0))
         self.switch_card(page, "Keep the screens dark while locked",
                          "The lock screen can't be covered, so the displays are switched off while you're "
                          "away and back on when you return.", "lock_black")
@@ -1027,18 +1120,20 @@ class App:
         self.switch_card(page, "Start with Windows",
                          "Runs quietly in the system tray (by the clock) every time you sign in.",
                          "startup", lambda: set_startup(self.s["startup"]))
-        self.button_card(page, "Activity log", "See when your screens went black, and why.", "Open",
+        self.button_card(page, "Activity log", "See when your PC locked or your screens went black, and why.",
+                         "Open",
                          lambda: os.startfile(LOG_FILE) if os.path.exists(LOG_FILE) else None)
         self.button_card(page, "Reset settings", "Go back to the original settings.", "Reset",
                          self.reset_defaults)
-        self.button_card(page, "Quit", "Stops Presence Blackout until you open it again.", "Quit",
+        self.button_card(page, "Quit", "Stops Presence Detect until you open it again.", "Quit",
                          lambda: self.requests.__setitem__("quit", True), danger=True)
 
     # ---- navigation
     PAGE_SUBTITLES = {
+        "home": "Lock your PC and black out your screens when you walk away.",
         "blackout": "When and how your screens go black.",
-        "screens": "Pick your screens and how they switch off.",
-        "lock": "Lock Windows when you've been gone a while.",
+        "screens": "Pick which screens go black and how they switch off.",
+        "lock": "Lock Windows when you've been away for a while.",
         "general": "Startup, activity log and more.",
     }
 
@@ -1132,15 +1227,22 @@ class App:
         for var, key, invert in self.switch_vars:  # e.g. after Reset, or pausing from the tray
             if var.get() != (bool(s[key]) != invert):
                 var.set(bool(s[key]) != invert)
-        # black out page
-        self.away_row.refresh(enabled=not s["paused"])
-        if s["paused"]:
-            self.sentence.configure(text="Automatic black out is switched off.", text_color=MUTED)
+        # home + black out page
+        if not s["blackout"]:
+            text, col = "Off \u2014 your screens stay on.", MUTED
         elif s["away"] < 0.5:
-            self.sentence.configure(text="Your screens go black the moment you leave.", text_color=ACCENT)
+            text, col = "Your screens go black the moment you leave.", ACCENT
         else:
-            self.sentence.configure(text=f"Your screens go black {duration_text(s['away'])} after you leave.",
-                                    text_color=ACCENT)
+            text, col = f"Your screens go black {duration_text(s['away'])} after you leave.", ACCENT
+        self.sentence.configure(text=text, text_color=col)
+        self.blackout_summary.configure(text=text, text_color=col)
+        self.away_row.refresh(enabled=s["blackout"])
+        if s["lock"]:
+            text, col = f"Your PC locks {duration_text(s['lock_after'])} after you leave.", ACCENT
+        else:
+            text, col = "Off \u2014 your PC won't lock by itself.", MUTED
+        self.lock_sentence.configure(text=text, text_color=col)
+        self.lock_summary.configure(text=text, text_color=col)
         tr = s["transition"]
         self.select(self.tr_seg, tr)
         self.fade_row.pack_forget()
@@ -1186,16 +1288,25 @@ class App:
             return
         s = self.s
         delay = s["away"] if st["connected"] else max(s["away"], NO_TRACKER_AWAY_S)
+        lock_delay = s["lock_after"] if st["connected"] else max(s["lock_after"], NO_TRACKER_AWAY_S)
         if not st["connected"]:
             title, col = "\u25CF  Tracker not found", RED
-            sub = f"Plug in your Tobii. Until then, screens go black after {short(delay)} without keyboard or mouse."
+            sub = (f"Plug in your Tobii. Until then it only goes by the keyboard and mouse "
+                   f"(waits at least {short(NO_TRACKER_AWAY_S)}).")
         elif s["paused"]:
-            title, col, sub = "\u25CF  Switched off", AMBER, "Automatic black out is off."
+            title, col, sub = "\u25CF  Paused", AMBER, "Unpause from the tray icon by the clock."
+        elif not s["lock"] and not s["blackout"]:
+            title, col, sub = "\u25CF  Nothing switched on", AMBER, "Turn on Lock or Black out on the Home page."
         elif st["active"]:
             title, col, sub = "\u25CF  Screens are black", ACCENT, "Move the mouse or sit down to wake them."
         elif st["away"] > 1:
             title, col = "\u25CF  You've stepped away", MUTED
-            sub = f"Away {short(st['away'])} \u00b7 black in {short(max(delay - st['away'], 0))}"
+            parts = [f"Away {short(st['away'])}"]
+            if s["blackout"]:
+                parts.append(f"black in {short(max(delay - st['away'], 0))}")
+            if s["lock"]:
+                parts.append(f"locks in {short(max(lock_delay - st['away'], 0))}")
+            sub = " \u00b7 ".join(parts)
         else:
             title, col, sub = "\u25CF  You're here", GREEN, "Watching for when you leave."
         self.status_title.configure(text=title, text_color=col)
@@ -1204,7 +1315,8 @@ class App:
         for key in ("head", "gaze"):
             self.sensor_labels[key].configure(text_color=GREEN if info.get(key) else FAINT)
         self.sensor_labels["input"].configure(text_color=GREEN if st["idle"] < 2 else FAINT)
-        if self.s["paused"] == self.v_enabled.get():  # paused from the tray
+        if s["paused"] != getattr(self, "_shown_paused", None):  # paused from the tray
+            self._shown_paused = s["paused"]
             self.refresh_all()
         mons = [(m["id"], m["x"], m["y"], m["w"], m["h"]) for m in monitors()]
         if mons != self._last_monitors:
@@ -1227,7 +1339,7 @@ def hotkey(vk):
 
 
 def run_test(engine):
-    print("Live readout (never blanks). Ctrl+C to stop.")
+    print("Live readout (never locks or blacks out). Ctrl+C to stop.")
     try:
         while True:
             now = time.perf_counter()
@@ -1249,7 +1361,7 @@ def run_test(engine):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--background", action="store_true", help="start hidden in the tray")
-    ap.add_argument("--test", action="store_true", help="console readout of what it senses; never blanks")
+    ap.add_argument("--test", action="store_true", help="console readout of what it senses; takes no action")
     args = ap.parse_args()
 
     settings = load_settings()
@@ -1257,17 +1369,17 @@ def main():
         return run_test(Engine(settings, dry_run=True))
 
     # one copy at a time; starting it again just opens the window of the running one
-    kernel32.CreateMutexW(None, False, "PresenceBlackoutSingleInstance")
+    kernel32.CreateMutexW(None, False, "PresenceDetectSingleInstance")
     already = kernel32.GetLastError() == 183
     kernel32.CreateEventW.restype = wt.HANDLE
-    show_event = kernel32.CreateEventW(None, False, False, "PresenceBlackoutShowWindow")
+    show_event = kernel32.CreateEventW(None, False, False, "PresenceDetectShowWindow")
     if already:
         if not args.background:
             kernel32.SetEvent(wt.HANDLE(show_event))
         return
 
     try:
-        shell32.SetCurrentProcessExplicitAppUserModelID("PresenceBlackout.App")  # own taskbar icon
+        shell32.SetCurrentProcessExplicitAppUserModelID("PresenceDetect.App")  # own taskbar icon
     except Exception:
         pass
     if not os.path.exists(ICON_FILE):
@@ -1282,7 +1394,7 @@ def main():
     ctk.set_appearance_mode("dark")
     root = ctk.CTk()
     root.withdraw()
-    requests = {"open": False, "blackout_now": False, "quit": False}
+    requests = {"open": False, "blackout_now": False, "lock_now": False, "quit": False}
     engine = Engine(settings)
     app = App(root, engine, requests)
     icon = start_tray(engine, requests)
@@ -1311,6 +1423,9 @@ def main():
                     engine.wake("manual")
                 engine.black_out(now, manual=True)
             state["keys"] = {"b"} if b_down else set()
+            if requests["lock_now"]:
+                requests["lock_now"] = False
+                engine.lock_now()
             engine.step(now)
             if now - state["ui"] > 0.25:
                 state["ui"] = now
