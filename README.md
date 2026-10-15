@@ -49,7 +49,7 @@ The app opens its settings window and adds an icon to the system tray (by the cl
 
 | | |
 |---|---|
-| ![Lock](screenshots/lock.png) | ![Black out](screenshots/black-out.png) |
+| ![Lock](screenshots/lock.png) | ![Black out](screenshots/black-out-wait.png) |
 | ![Screens](screenshots/screens.png) | ![Detection](screenshots/detection.png) |
 | ![General](screenshots/general.png) | |
 
@@ -93,7 +93,7 @@ Shortcuts: **Ctrl + Alt + B** black out now · **Ctrl + Alt + End** quit.
 
 ## Good to know
 
-- If the tracker sometimes loses you for a moment (for example when you turn far towards a side monitor), a short wait like **2–4 s** before blacking out avoids brief accidental blackouts. For locking, a minute or more is usually comfortable.
+- If the tracker sometimes loses you for a moment (for example when you turn far towards a side monitor), a short wait like **5 s** before blacking out avoids brief accidental blackouts. For locking, a minute or more is usually comfortable.
 - **"Power the displays off"** uses the monitors' own power saving, so it affects every screen and waking takes a second or two.
 - Settings are saved in `presence_detect_settings.json` (in `%APPDATA%\PresenceDetect` for the .exe, next to the script otherwise), and events (lock, black out, wake, tracker connected/disconnected) in `presence_detect.log`.
 - Coming from **Presence Blackout** (the old name)? Your settings are picked up automatically.

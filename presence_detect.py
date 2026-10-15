@@ -61,8 +61,8 @@ LOCK_CHECK_S = 1.0     # how often to check whether Windows is locked
 NO_TRACKER_AWAY_S = 300  # tracker unplugged: fall back to a normal screensaver (keyboard/mouse idle)
 REPEAT_OFF_S = 15      # re-send "displays off" this often while away (in case something woke them)
 
-BLACKOUT_PRESETS = [(0, "Instantly"), (2, "2 s"), (4, "4 s"), (6, "6 s"), (8, "8 s"), (10, "10 s"),
-                    (15, "15 s"), (30, "30 s"), (60, "1 min"), (300, "5 min"), (600, "10 min")]
+BLACKOUT_PRESETS = [(0, "Instantly"), (5, "5 s"), (15, "15 s"), (30, "30 s"),
+                    (60, "1 min"), (300, "5 min"), (600, "10 min")]
 LOCK_PRESETS = [(15, "15 s"), (30, "30 s"), (60, "1 min"), (120, "2 min"), (300, "5 min"),
                 (600, "10 min"), (900, "15 min"), (1800, "30 min"), (3600, "1 hour")]
 FADE_PRESETS = [(0.5, "0.5 s"), (1, "1 s"), (2, "2 s"), (3, "3 s"), (5, "5 s")]
@@ -1066,7 +1066,7 @@ class App:
         c = self.card(page, "How long to wait", "After you leave, wait this long before the screens go black.")
         self.sentence = ctk.CTkLabel(c, text="", font=F["sentence"], text_color=ACCENT, anchor="w")
         self.sentence.pack(fill="x", pady=(10, 0))
-        self.away_row = OptionRow(self, c, None, "away", BLACKOUT_PRESETS, 6, 1, short, 0, 24 * 3600, "45s or 3m")
+        self.away_row = OptionRow(self, c, None, "away", BLACKOUT_PRESETS, 4, 1, short, 0, 24 * 3600, "45s or 3m")
         self.away_row.pack(pady=(6, 0))
 
         c = self.card(page, "How the screens go black")
