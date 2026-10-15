@@ -9,7 +9,7 @@ Two features, each with its own on/off switch — use either one, or both:
 - 🔒 **Lock my PC when I walk away** — Windows locks itself after you've been gone for the time you choose. Nobody can use your PC while you're away.
 - 🌙 **Black out my screens when I walk away** — your screens turn pure black and come back the moment you sit down. Protects OLED screens from burn-in and saves power.
 
-![Home](screenshots/1-home.png)
+![Home](screenshots/home.png)
 
 ## Download
 
@@ -49,9 +49,9 @@ The app opens its settings window and adds an icon to the system tray (by the cl
 
 | | |
 |---|---|
-| ![Lock](screenshots/2-lock.png) | ![Black out](screenshots/3-black-out.png) |
-| ![Screens](screenshots/4-screens.png) | ![Detection](screenshots/6-detection.png) |
-| ![General](screenshots/5-general.png) | |
+| ![Lock](screenshots/lock.png) | ![Black out](screenshots/black-out.png) |
+| ![Screens](screenshots/screens.png) | ![Detection](screenshots/detection.png) |
+| ![General](screenshots/general.png) | |
 
 ## Default settings
 
