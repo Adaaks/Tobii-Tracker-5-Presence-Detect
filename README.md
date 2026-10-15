@@ -1,3 +1,5 @@
+<p align="center"><img src="screenshots/logo.png" width="96" alt="Presence Detect logo"></p>
+
 # Tobii Tracker 5 – Presence Detect
 
 **Lock your PC and/or black out your screens when you walk away** — using the **Tobii Eye Tracker 5** to sense whether you're at your desk.
@@ -9,7 +11,7 @@ Two features, each with its own on/off switch — use either one, or both:
 - 🔒 **Lock my PC when I walk away** — Windows locks itself after you've been gone for the time you choose. Nobody can use your PC while you're away.
 - 🌙 **Black out my screens when I walk away** — your screens turn pure black and come back the moment you sit down. Protects OLED screens from burn-in and saves power.
 
-![Home](screenshots/home.png)
+![Home](screenshots/v1.3/home.png)
 
 ## Download
 
@@ -49,9 +51,9 @@ The app opens its settings window and adds an icon to the system tray (by the cl
 
 | | |
 |---|---|
-| ![Lock](screenshots/lock.png) | ![Black out](screenshots/black-out-times.png) |
-| ![Screens](screenshots/screens.png) | ![Detection](screenshots/detection.png) |
-| ![General](screenshots/general.png) | |
+| ![Lock](screenshots/v1.3/lock.png) | ![Black out](screenshots/v1.3/black-out.png) |
+| ![Screens](screenshots/v1.3/screens.png) | ![Detection](screenshots/v1.3/detection.png) |
+| ![General](screenshots/v1.3/general.png) | |
 
 ## Default settings
 

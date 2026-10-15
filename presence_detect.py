@@ -604,20 +604,51 @@ class Engine:
 
 # ---------------------------------------------------------------- tray icon
 
-def tray_image(color, size=64):
-    """Small monitor glyph with a status dot. Drawn large and scaled down for smooth edges."""
-    from PIL import Image, ImageDraw
-    S = 256
+def _rgb(hex_color):
+    return tuple(int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def _mix(a, b, t):
+    """Blend colour a into colour b by t (0-1), as a hex string."""
+    ra, rb = _rgb(a), _rgb(b)
+    return "#%02x%02x%02x" % tuple(int(rb[i] + (ra[i] - rb[i]) * t) for i in range(3))
+
+
+def eye_points(cx, cy, half_w, half_h, n=48):
+    """Almond / eye outline: two parabolas meeting in points at each end."""
+    ts = [i / n * 2 - 1 for i in range(n + 1)]
+    return ([(cx + half_w * t, cy - half_h * (1 - t * t)) for t in ts] +
+            [(cx + half_w * t, cy + half_h * (1 - t * t)) for t in reversed(ts)])
+
+
+def logo_image(size=64, dot=None):
+    """App logo: a white eye on an indigo-to-violet tile, with an optional status dot."""
+    from PIL import Image, ImageChops, ImageDraw
+    S = 512
+    v = Image.linear_gradient("L").resize((S, S))
+    diag = ImageChops.add(v, v.rotate(90), scale=2)  # top-left -> bottom-right
+    grad = Image.composite(Image.new("RGB", (S, S), _rgb(ACCENT2)), Image.new("RGB", (S, S), _rgb(ACCENT)), diag)
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    mask = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((8, 8, S - 8, S - 8), radius=124, fill=255)
+    img.paste(grad, (0, 0), mask)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((20, 40, 236, 188), radius=22, fill=(0, 0, 0, 255), outline=(225, 228, 235, 255), width=18)
-    d.rectangle((112, 188, 144, 214), fill=(225, 228, 235, 255))
-    d.rounded_rectangle((70, 210, 186, 230), radius=8, fill=(225, 228, 235, 255))
-    d.ellipse((150, 120, 250, 220), fill=color, outline=(0, 0, 0, 255), width=12)
+    c = S / 2
+    d.polygon(eye_points(c, c, S * 0.34, S * 0.21), fill=(255, 255, 255, 255))
+    for r, col in ((S * 0.13, _rgb(ACCENT) + (255,)), (S * 0.06, (18, 14, 44, 255))):
+        d.ellipse((c - r, c - r, c + r, c + r), fill=col)
+    r = S * 0.026
+    d.ellipse((c - S * 0.045 - r, c - S * 0.05 - r, c - S * 0.045 + r, c - S * 0.05 + r), fill=(255, 255, 255, 255))
+    if dot:
+        d.ellipse((S * 0.58, S * 0.58, S * 0.99, S * 0.99), fill=dot, outline=_rgb(BG) + (255,), width=int(S * 0.05))
     return img.resize((size, size), Image.LANCZOS)
 
 
-TRAY_GREEN, TRAY_AMBER, TRAY_GREY = (60, 210, 110, 255), (245, 180, 40, 255), (140, 142, 150, 255)
+def tray_image(color, size=64):
+    return logo_image(size, dot=color)
+
+
+TRAY_GREEN, TRAY_AMBER, TRAY_GREY = (62, 224, 160, 255), (255, 194, 75, 255), (140, 142, 160, 255)
 
 
 def start_tray(engine, requests):
@@ -646,21 +677,23 @@ def start_tray(engine, requests):
 
 # ---------------------------------------------------------------- settings window
 
-BG = "#0C0C0F"
-SIDEBAR = "#111115"
-CARD = "#17171D"
-CARD_BORDER = "#22222A"
-CHIP = "#22222A"
-CHIP_HOVER = "#2C2C36"
-TEXT = "#ECEDF2"
-MUTED = "#8C8E99"
-FAINT = "#5C5E68"
-ACCENT = "#4C8DFF"
-ACCENT_HOVER = "#3A79EC"
-ACCENT_SOFT = "#1A2B4C"
-GREEN = "#3DD68C"
-AMBER = "#F5B13D"
-RED = "#F06A6A"
+BG = "#09090D"
+SIDEBAR = "#0E0E15"
+CARD = "#14141C"
+CARD_BORDER = "#21212C"
+CHIP = "#1D1D28"
+CHIP_HOVER = "#272735"
+TEXT = "#F1F2F7"
+MUTED = "#8D8FA6"
+FAINT = "#56586E"
+ACCENT = "#7B6CFF"        # indigo
+ACCENT2 = "#B26BFF"       # violet - the other end of the logo gradient
+ACCENT_HOVER = "#6A5AF5"
+ACCENT_SOFT = "#221F48"
+ACCENT_LIGHT = "#B4ABFF"
+GREEN = "#3EE0A0"
+AMBER = "#FFC24B"
+RED = "#FF6B7A"
 
 
 ICON_FONTS = [r"C:\Windows\Fonts\SegoeIcons.ttf", r"C:\Windows\Fonts\segmdl2.ttf"]  # Win 11, Win 10
@@ -679,6 +712,47 @@ def glyph_image(ctk, glyph, color, size=18):
         d.text((S / 2, S / 2), glyph, font=f, fill=color, anchor="mm")
     img = img.resize((size * 2, size * 2), Image.LANCZOS)
     return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+
+
+def tile_image(ctk, glyph, size=48):
+    """An icon glyph on a soft rounded tile, for the feature cards."""
+    from PIL import Image, ImageDraw, ImageFont
+    S = size * 4
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((0, 0, S - 1, S - 1), radius=int(S * 0.28), fill=_rgb(ACCENT_SOFT) + (255,))
+    font_path = next((p for p in ICON_FONTS if os.path.exists(p)), None)
+    if font_path:
+        d.text((S / 2, S / 2), glyph, font=ImageFont.truetype(font_path, int(S * 0.44)),
+               fill=_rgb(ACCENT_LIGHT) + (255,), anchor="mm")
+    img = img.resize((size * 2, size * 2), Image.LANCZOS)
+    return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+
+
+def hero_background(w, h, glow, radius):
+    """The Home banner: a dark card lit by a soft glow in the status colour, plus a violet one."""
+    from PIL import Image, ImageDraw
+    base = Image.new("RGB", (w, h), _rgb(CARD))
+
+    def blob(color, cx, cy, rx, ry, strength):
+        g = Image.radial_gradient("L").resize((max(int(rx * 2), 2), max(int(ry * 2), 2)))
+        # radial_gradient is 0 at the centre and 128 at the edge: fade to exactly nothing there
+        g = g.point(lambda v: int(255 * strength * max(0.0, 1 - v / 128) ** 2))
+        base.paste(Image.new("RGB", g.size, color), (int(cx - rx), int(cy - ry)), g)
+
+    blob(_rgb(glow), w * 0.06, h * 0.25, w * 0.42, h * 1.5, 0.34)
+    blob(_rgb(ACCENT2), w * 0.98, h * 1.05, w * 0.38, h * 1.3, 0.24)
+    # a large, faint eye on the right
+    k = 3  # drawn 3x larger and scaled down, for smooth edges
+    mark = Image.new("L", (w * k, h * k), 0)
+    ImageDraw.Draw(mark).polygon(eye_points(w * k * 0.86, h * k * 0.5, h * k * 0.62, h * k * 0.38), fill=12)
+    base.paste(Image.new("RGB", (w, h), (255, 255, 255)), (0, 0), mark.resize((w, h), Image.LANCZOS))
+    out = Image.new("RGB", (w, h), _rgb(BG))
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=255)
+    out.paste(base, (0, 0), mask)
+    ImageDraw.Draw(out).rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, outline=_rgb(CARD_BORDER), width=1)
+    return out
 
 
 UNIT_WORDS = {"": None, "s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1,
@@ -821,19 +895,26 @@ class App:
         root.minsize(980, 640)
         root.protocol("WM_DELETE_WINDOW", self.hide)
         root.after(300, self._set_icon)  # customtkinter sets its own icon at ~200 ms
-        semi = "Segoe UI Semibold"
+        import tkinter.font as tkfont
+        fams = set(tkfont.families(root))
+        # Windows 11's Segoe UI Variable where available, classic Segoe UI on Windows 10
+        self.display = "Segoe UI Variable Display Semib" if "Segoe UI Variable Display Semib" in fams else "Segoe UI Semibold"
+        text = "Segoe UI Variable Text" if "Segoe UI Variable Text" in fams else "Segoe UI"
+        semi = "Segoe UI Variable Text Semibold" if "Segoe UI Variable Text Semibold" in fams else "Segoe UI Semibold"
         self.F = {
-            "app": ctk.CTkFont(semi, 15),
-            "page": ctk.CTkFont(semi, 26),
-            "page_sub": ctk.CTkFont("Segoe UI", 13),
+            "app": ctk.CTkFont(self.display, 16),
+            "app_sub": ctk.CTkFont(text, 11),
+            "page": ctk.CTkFont(self.display, 28),
+            "page_sub": ctk.CTkFont(text, 13),
             "card": ctk.CTkFont(semi, 15),
-            "body": ctk.CTkFont("Segoe UI", 14),
-            "desc": ctk.CTkFont("Segoe UI", 12),
-            "label": ctk.CTkFont("Segoe UI", 12),
-            "small": ctk.CTkFont("Segoe UI", 11),
-            "small_off": ctk.CTkFont("Segoe UI", 11, overstrike=True),
-            "chip": ctk.CTkFont("Segoe UI", 13),
-            "nav": ctk.CTkFont("Segoe UI", 14),
+            "feature": ctk.CTkFont(self.display, 18),
+            "body": ctk.CTkFont(text, 14),
+            "desc": ctk.CTkFont(text, 12),
+            "label": ctk.CTkFont(text, 12),
+            "small": ctk.CTkFont(text, 11),
+            "small_off": ctk.CTkFont(text, 11, overstrike=True),
+            "chip": ctk.CTkFont(text, 13),
+            "nav": ctk.CTkFont(text, 14),
             "status": ctk.CTkFont(semi, 15),
             "sentence": ctk.CTkFont(semi, 14),
         }
@@ -841,7 +922,7 @@ class App:
         self.page = None
         self.switch_vars = []  # (var, settings key, inverted) - kept in sync by refresh_all
         self._build()
-        self.select_page("blackout")
+        self.select_page("home")
         self.refresh_all()
 
     # ---- building blocks
@@ -853,7 +934,7 @@ class App:
 
     def card(self, parent, title=None, desc=None, pady=(0, 12)):
         ctk = self.ctk
-        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=12, border_width=1, border_color=CARD_BORDER)
+        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=16, border_width=1, border_color=CARD_BORDER)
         f.pack(fill="x", pady=pady)
         inner = ctk.CTkFrame(f, fg_color="transparent")
         inner.pack(fill="x", padx=20, pady=16)
@@ -867,7 +948,7 @@ class App:
     def switch_card(self, parent, title, desc, key, on_change=None, invert=False):
         """A Windows-Settings style row: text on the left, switch on the right."""
         ctk = self.ctk
-        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=12, border_width=1, border_color=CARD_BORDER)
+        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=16, border_width=1, border_color=CARD_BORDER)
         f.pack(fill="x", pady=(0, 12))
         row = ctk.CTkFrame(f, fg_color="transparent")
         row.pack(fill="x", padx=20, pady=16)
@@ -893,7 +974,7 @@ class App:
 
     def button_card(self, parent, title, desc, button, command, danger=False):
         ctk = self.ctk
-        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=12, border_width=1, border_color=CARD_BORDER)
+        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=16, border_width=1, border_color=CARD_BORDER)
         f.pack(fill="x", pady=(0, 12))
         row = ctk.CTkFrame(f, fg_color="transparent")
         row.pack(fill="x", padx=20, pady=16)
@@ -939,22 +1020,27 @@ class App:
         side.grid_propagate(False)
         side.pack_propagate(False)
         brand = ctk.CTkFrame(side, fg_color="transparent")
-        brand.pack(fill="x", padx=20, pady=(24, 22))
-        logo = tray_image(TRAY_GREEN, 64)
-        ctk.CTkLabel(brand, text="", image=ctk.CTkImage(logo, logo, size=(28, 28))).pack(side="left")
-        ctk.CTkLabel(brand, text=APP_NAME, font=F["app"], text_color=TEXT).pack(side="left", padx=10)
+        brand.pack(fill="x", padx=20, pady=(26, 26))
+        logo = logo_image(96)
+        ctk.CTkLabel(brand, text="", image=ctk.CTkImage(logo, logo, size=(38, 38))).pack(side="left")
+        names = ctk.CTkFrame(brand, fg_color="transparent")
+        names.pack(side="left", padx=12)
+        ctk.CTkLabel(names, text=APP_NAME, font=F["app"], text_color=TEXT, anchor="w", height=20).pack(fill="x")
+        ctk.CTkLabel(names, text="for Tobii Eye Tracker 5", font=F["app_sub"], text_color=MUTED, anchor="w",
+                     height=16).pack(fill="x")
 
-        self.nav = {}
+        self.nav, self.nav_icons = {}, {}
         for key, label in self.PAGES:
-            b = ctk.CTkButton(side, text="   " + label, anchor="w", height=42, corner_radius=8, font=F["nav"],
+            self.nav_icons[key] = (glyph_image(ctk, GLYPHS[key], _rgb(MUTED) + (255,)),
+                                   glyph_image(ctk, GLYPHS[key], _rgb(ACCENT_LIGHT) + (255,)))
+            b = ctk.CTkButton(side, text="   " + label, anchor="w", height=44, corner_radius=10, font=F["nav"],
                               fg_color="transparent", hover_color=CHIP, text_color=MUTED,
-                              image=glyph_image(ctk, GLYPHS[key], (200, 203, 212, 255)),
-                              command=lambda k=key: self.select_page(k))
-            b.pack(fill="x", padx=12, pady=2)
+                              image=self.nav_icons[key][0], command=lambda k=key: self.select_page(k))
+            b.pack(fill="x", padx=14, pady=2)
             self.nav[key] = b
 
         # status panel
-        st = ctk.CTkFrame(side, fg_color=CARD, corner_radius=12, border_width=1, border_color=CARD_BORDER)
+        st = ctk.CTkFrame(side, fg_color=CARD, corner_radius=16, border_width=1, border_color=CARD_BORDER)
         st.pack(side="bottom", fill="x", padx=12, pady=16)
         sti = ctk.CTkFrame(st, fg_color="transparent")
         sti.pack(fill="x", padx=14, pady=14)
@@ -1012,12 +1098,11 @@ class App:
     def feature_card(self, parent, glyph, title, desc, key, page):
         """Big on/off card for one of the two features, with a summary and a link to its settings."""
         ctk, F = self.ctk, self.F
-        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=14, border_width=1, border_color=CARD_BORDER)
+        f = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=16, border_width=1, border_color=CARD_BORDER)
         f.pack(fill="x", pady=(0, 14))
         row = ctk.CTkFrame(f, fg_color="transparent")
         row.pack(fill="x", padx=22, pady=20)
-        ctk.CTkLabel(row, text="", image=glyph_image(ctk, glyph, (76, 141, 255, 255), 28)).pack(side="left",
-                                                                                               padx=(0, 18))
+        ctk.CTkLabel(row, text="", image=tile_image(ctk, glyph, 52)).pack(side="left", padx=(0, 18))
         var = ctk.BooleanVar(value=bool(self.s[key]))
         self.switch_vars.append((var, key, False))
 
@@ -1033,8 +1118,7 @@ class App:
                       command=lambda: self.select_page(page)).pack(side="right")
         txt = ctk.CTkFrame(row, fg_color="transparent")
         txt.pack(side="left", fill="x", expand=True)
-        ctk.CTkLabel(txt, text=title, font=ctk.CTkFont("Segoe UI Semibold", 17), text_color=TEXT,
-                     anchor="w").pack(fill="x")
+        ctk.CTkLabel(txt, text=title, font=F["feature"], text_color=TEXT, anchor="w").pack(fill="x")
         ctk.CTkLabel(txt, text=desc, font=F["desc"], text_color=MUTED, anchor="w", justify="left",
                      wraplength=int(480 * self.scale)).pack(fill="x", pady=(2, 0))
         summary = ctk.CTkLabel(txt, text="", font=F["sentence"], text_color=ACCENT, anchor="w")
@@ -1043,6 +1127,11 @@ class App:
 
     def _build_home(self, page):
         ctk, F = self.ctk, self.F
+        self.hero_h = int(168 * self.scale)
+        self.hero = tk.Canvas(page, height=self.hero_h, bg=BG, highlightthickness=0)
+        self.hero.pack(fill="x", pady=(0, 16))
+        self._hero, self._hero_key, self._hero_img = None, None, None
+        self.hero.bind("<Configure>", lambda e: self.draw_hero())
         self.lock_summary = self.feature_card(
             page, GLYPHS["lock"], "Lock my PC when I walk away",
             "Keeps your PC safe when you leave it. Windows locks itself, so nobody can use it.", "lock", "lock")
@@ -1057,6 +1146,40 @@ class App:
                               "Detection page."),
                      font=F["desc"], text_color=MUTED, anchor="w", justify="left",
                      wraplength=int(720 * self.scale)).pack(fill="x", pady=(4, 0))
+
+    def draw_hero(self):
+        """Big live status banner on the Home page."""
+        st = self._hero
+        w = self.hero.winfo_width()
+        if not st or w < 100:
+            return
+        from PIL import ImageTk
+        h, sc = self.hero_h, self.scale
+        key = (w, h, st["color"])
+        if key != self._hero_key:
+            self._hero_img = ImageTk.PhotoImage(hero_background(w, h, st["color"], int(18 * sc)))
+            self._hero_key = key
+        c = self.hero
+        c.delete("all")
+        c.create_image(0, 0, anchor="nw", image=self._hero_img)
+        x, y = int(30 * sc), int(52 * sc)
+        r = int(7 * sc)
+        c.create_oval(x - r * 2, y - r * 2, x + r * 2, y + r * 2, fill=_mix(st["color"], CARD, 0.25), outline="")
+        c.create_oval(x - r, y - r, x + r, y + r, fill=st["color"], outline="")
+        c.create_text(x + int(24 * sc), y, text=st["title"], anchor="w", fill=TEXT, font=(self.display, 26))
+        c.create_text(x - r, y + int(40 * sc), text=st["sub"], anchor="w", fill=MUTED, font=("Segoe UI", 11))
+        px, py = x - r, h - int(34 * sc)
+        for label, state in st["pills"]:
+            col = GREEN if state == "on" else FAINT
+            text = ("\u25CF " if state != "off" else "\u25CB ") + label
+            tid = c.create_text(px + int(12 * sc), py, text=text, anchor="w", fill=col,
+                                font=("Segoe UI", 10, "overstrike") if state == "off" else ("Segoe UI", 10))
+            x0, y0, x1, y1 = c.bbox(tid)
+            pad = int(10 * sc)
+            rr = c.create_rectangle(x0 - pad, y0 - int(5 * sc), x1 + pad, y1 + int(5 * sc),
+                                    fill=_mix("#FFFFFF", CARD, 0.05), outline=CARD_BORDER)
+            c.tag_lower(rr, tid)
+            px = x1 + pad + int(8 * sc)
 
     def _build_blackout(self, page):
         ctk, F = self.ctk, self.F
@@ -1188,7 +1311,9 @@ class App:
         self.page_title.configure(text=dict(self.PAGES)[key])
         self.page_sub.configure(text=self.PAGE_SUBTITLES[key])
         for k, b in self.nav.items():
-            b.configure(fg_color=CHIP if k == key else "transparent", text_color=TEXT if k == key else MUTED)
+            on = k == key
+            b.configure(fg_color=ACCENT_SOFT if on else "transparent", text_color=TEXT if on else MUTED,
+                        hover_color=ACCENT_SOFT if on else CHIP, image=self.nav_icons[k][1 if on else 0])
 
     # ---- actions
     def pick_transition(self, v):
@@ -1356,6 +1481,13 @@ class App:
         self.status_sub.configure(text=sub)
         info = st["info"]
         live = {"head": info.get("head"), "gaze": info.get("gaze"), "input": st["idle"] < 2}
+        pills = [(label, "off" if not s[setting] else ("on" if live[key] else "idle"))
+                 for key, label, setting in (("head", "Head", "use_head"), ("gaze", "Eyes", "use_eyes"),
+                                             ("input", "Keyboard & mouse", "use_input"))]
+        hero = {"title": title.replace("\u25CF  ", ""), "sub": sub, "color": col, "pills": pills}
+        if hero != self._hero:
+            self._hero = hero
+            self.draw_hero()
         for key, setting in (("head", "use_head"), ("gaze", "use_eyes"), ("input", "use_input")):
             lb = self.sensor_labels[key]
             if s[setting]:
@@ -1429,11 +1561,10 @@ def main():
         shell32.SetCurrentProcessExplicitAppUserModelID("PresenceDetect.App")  # own taskbar icon
     except Exception:
         pass
-    if not os.path.exists(ICON_FILE):
-        try:
-            tray_image(TRAY_GREEN, 256).save(ICON_FILE, sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (256, 256)])
-        except Exception:
-            pass
+    try:  # (re)written each start so it always matches the current logo
+        logo_image(256).save(ICON_FILE, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (256, 256)])
+    except Exception:
+        pass
     if settings["startup"]:
         set_startup(True)  # (re)points the login entry at this copy of the app
 
