@@ -54,6 +54,7 @@ TICK_MS = 100
 SEEN_GRACE_S = 1.0     # a head/gaze sample keeps you "present" for this long
 WAKE_CONFIRM_S = 0.3   # tracker must see you this long to wake (ignores one-frame glitches)
 RETRY_TRACKER_S = 5    # retry connecting if the tracker / Tobii service isn't available
+INPUT_WAKE_HOLD_S = 3  # keys/mouse not counted: after they wake the screens, wait before blacking out again
 CONNECT_GRACE_S = 2    # right after (re)connecting, assume you're here until the first data arrives
 REBUILD_AFTER_S = 5    # a lost connection that hasn't come back by itself is rebuilt from scratch
 LOCK_CHECK_S = 1.0     # how often to check whether Windows is locked
@@ -85,6 +86,9 @@ DEFAULTS = {
     "excluded": [],             # monitors left alone
     "displays_off_after": 0,    # while black, also power the displays off after this long (0 = never)
     "wake_on_presence": True,   # waking: tracker seeing you counts, not just keyboard/mouse
+    "use_head": True,           # what counts as you being here: head (face) tracking,
+    "use_eyes": True,           #   eye tracking,
+    "use_input": True,          #   and keyboard/mouse use (at least one stays on)
     "lock": False,              # feature: lock Windows when away
     "lock_after": 300,
     "lock_black": True,         # displays off on the lock screen while away
@@ -470,6 +474,7 @@ class Engine:
         self.last_off, self.off_by_us = -1e9, False
         self.locked, self._lock_checked = False, -1e9
         self.connected_since = None
+        self.hold_until = 0.0
         self.status = {}
 
     def black_out(self, now, manual=False):
@@ -504,7 +509,8 @@ class Engine:
     def step(self, now):
         s = self.s
         self.tracker.poll(now)
-        sensed, info = self.tracker.signals(now)
+        _, info = self.tracker.signals(now)
+        sensed = bool((s["use_head"] and info.get("head")) or (s["use_eyes"] and info.get("gaze")))
         if self.tracker.connected:
             self.connected_since = self.connected_since or now
             if now - self.connected_since < CONNECT_GRACE_S:
@@ -516,7 +522,10 @@ class Engine:
             self.sensed_since = self.sensed_since or now
         else:
             self.sensed_since = None
-        idle = seconds_since_input()
+        idle_raw = seconds_since_input()
+        # keyboard/mouse always count while the tracker is unplugged - it's all there is then
+        input_counts = s["use_input"] or not self.tracker.connected
+        idle = idle_raw if input_counts else 1e9
         away = min(now - self.last_seen, idle)
         back = self.sensed_since is not None and now - self.sensed_since >= WAKE_CONFIRM_S
         back = back and s["wake_on_presence"]
@@ -528,7 +537,7 @@ class Engine:
         # black out every time you stop typing for a second - use a screensaver-style wait.
         delay = s["away"] if self.tracker.connected else max(s["away"], NO_TRACKER_AWAY_S)
         lock_delay = s["lock_after"] if self.tracker.connected else max(s["lock_after"], NO_TRACKER_AWAY_S)
-        self.status = {"info": info, "sensed": sensed, "idle": idle, "away": away, "locked": locked,
+        self.status = {"info": info, "sensed": sensed, "idle": idle_raw, "away": away, "locked": locked,
                        "connected": self.tracker.connected, "active": self.active}
         if self.dry:
             return
@@ -549,16 +558,19 @@ class Engine:
             return
         self.off_by_us = False
 
-        if s["lock"] and not s["paused"] and away >= lock_delay:
+        if s["lock"] and not s["paused"] and away >= lock_delay and now >= self.hold_until:
             self.lock_now("away for a while")
             return
 
         if self.active:
+            # the keyboard and mouse always wake the screens, even when they don't count as "here"
             if self.manual:
-                if idle < 0.5 and now - self.t_on > 1.0:
+                if idle_raw < 0.5 and now - self.t_on > 1.0:
                     self.wake("input")
-            elif idle < 0.5:
+            elif idle_raw < 0.5:
                 self.wake("input")
+                if not input_counts:
+                    self.hold_until = now + INPUT_WAKE_HOLD_S
             elif back:
                 self.wake("tracker sees you")
             elif self.mode == "off" or self.panel_off:
@@ -576,7 +588,7 @@ class Engine:
                 displays_off()
                 self.panel_off, self.last_off = True, now
             self.overlay.keep_on_top(now)
-        elif s["blackout"] and not s["paused"] and away >= max(delay, 0.3):
+        elif s["blackout"] and not s["paused"] and away >= max(delay, 0.3) and now >= self.hold_until:
             self.black_out(now)
 
     def lock_now(self, reason="manual"):
@@ -652,7 +664,7 @@ RED = "#F06A6A"
 
 
 ICON_FONTS = [r"C:\Windows\Fonts\SegoeIcons.ttf", r"C:\Windows\Fonts\segmdl2.ttf"]  # Win 11, Win 10
-GLYPHS = {"home": "\uE80F", "blackout": "\uE708", "screens": "\uE7F4", "lock": "\uE72E", "general": "\uE713"}
+GLYPHS = {"home": "\uE80F", "detect": "\uE890", "blackout": "\uE708", "screens": "\uE7F4", "lock": "\uE72E", "general": "\uE713"}
 
 
 def glyph_image(ctk, glyph, color, size=18):
@@ -797,7 +809,7 @@ def pct(v):
 
 class App:
     PAGES = [("home", "Home"), ("lock", "Lock"), ("blackout", "Black out"), ("screens", "Screens"),
-             ("general", "General")]
+             ("detect", "Detection"), ("general", "General")]
 
     def __init__(self, root, engine, requests):
         import customtkinter as ctk
@@ -819,6 +831,7 @@ class App:
             "desc": ctk.CTkFont("Segoe UI", 12),
             "label": ctk.CTkFont("Segoe UI", 12),
             "small": ctk.CTkFont("Segoe UI", 11),
+            "small_off": ctk.CTkFont("Segoe UI", 11, overstrike=True),
             "chip": ctk.CTkFont("Segoe UI", 13),
             "nav": ctk.CTkFont("Segoe UI", 14),
             "status": ctk.CTkFont(semi, 15),
@@ -956,6 +969,7 @@ class App:
         for key, label in (("head", "Head"), ("gaze", "Eyes"), ("input", "Keys / mouse")):
             lb = ctk.CTkLabel(sens, text=f"\u25CF {label}", font=F["small"], text_color=FAINT)
             lb.pack(side="left", padx=(0, 8))
+            lb.base = label
             self.sensor_labels[key] = lb
         btns = ctk.CTkFrame(sti, fg_color="transparent")
         btns.pack(fill="x")
@@ -992,6 +1006,7 @@ class App:
         self._build_blackout(self.pages["blackout"])
         self._build_screens(self.pages["screens"])
         self._build_lock(self.pages["lock"])
+        self._build_detect(self.pages["detect"])
         self._build_general(self.pages["general"])
 
     def feature_card(self, parent, glyph, title, desc, key, page):
@@ -1038,7 +1053,8 @@ class App:
         c = self.card(page, "How it works")
         ctk.CTkLabel(c, text=("Your Tobii Eye Tracker 5 watches for your head and eyes \u2014 not where you're "
                               "looking \u2014 so reading another monitor never sets anything off. Using the "
-                              "keyboard or mouse also counts as being here."),
+                              "keyboard or mouse also counts as being here. You can change this on the "
+                              "Detection page."),
                      font=F["desc"], text_color=MUTED, anchor="w", justify="left",
                      wraplength=int(720 * self.scale)).pack(fill="x", pady=(4, 0))
 
@@ -1116,6 +1132,32 @@ class App:
                          "The lock screen can't be covered, so the displays are switched off while you're "
                          "away and back on when you return.", "lock_black")
 
+    def _build_detect(self, page):
+        ctk, F = self.ctk, self.F
+        keys = ("use_head", "use_eyes", "use_input")
+
+        def guard(key):
+            def check():
+                if not any(self.s[k] for k in keys):  # nothing left to tell you're here
+                    self.s[key] = True
+                    save_settings(self.s)
+                    self.detect_warn.configure(text="At least one of these has to stay on.")
+                else:
+                    self.detect_warn.configure(text="")
+            return check
+
+        self.switch_card(page, "Head",
+                         "You count as here while the tracker can see your head and face.", "use_head",
+                         guard("use_head"))
+        self.switch_card(page, "Eyes",
+                         "You count as here while the tracker can see your eyes.", "use_eyes", guard("use_eyes"))
+        self.switch_card(page, "Keyboard and mouse",
+                         "Typing or moving the mouse counts as being here. Even when this is off, they still "
+                         "wake a black screen \u2014 and they're always used if the tracker is unplugged.",
+                         "use_input", guard("use_input"))
+        self.detect_warn = ctk.CTkLabel(page, text="", font=F["desc"], text_color=AMBER, anchor="w")
+        self.detect_warn.pack(fill="x", padx=4)
+
     def _build_general(self, page):
         self.switch_card(page, "Start with Windows",
                          "Runs quietly in the system tray (by the clock) every time you sign in.",
@@ -1134,6 +1176,7 @@ class App:
         "blackout": "When and how your screens go black.",
         "screens": "Pick which screens go black and how they switch off.",
         "lock": "Lock Windows when you've been away for a while.",
+        "detect": "Choose what counts as you being at your desk.",
         "general": "Startup, activity log and more.",
     }
 
@@ -1312,9 +1355,13 @@ class App:
         self.status_title.configure(text=title, text_color=col)
         self.status_sub.configure(text=sub)
         info = st["info"]
-        for key in ("head", "gaze"):
-            self.sensor_labels[key].configure(text_color=GREEN if info.get(key) else FAINT)
-        self.sensor_labels["input"].configure(text_color=GREEN if st["idle"] < 2 else FAINT)
+        live = {"head": info.get("head"), "gaze": info.get("gaze"), "input": st["idle"] < 2}
+        for key, setting in (("head", "use_head"), ("gaze", "use_eyes"), ("input", "use_input")):
+            lb = self.sensor_labels[key]
+            if s[setting]:
+                lb.configure(text=f"\u25CF {lb.base}", font=self.F["small"], text_color=GREEN if live[key] else FAINT)
+            else:  # switched off on the Detection page: crossed out
+                lb.configure(text=f"\u25CB {lb.base}", font=self.F["small_off"], text_color=FAINT)
         if s["paused"] != getattr(self, "_shown_paused", None):  # paused from the tray
             self._shown_paused = s["paused"]
             self.refresh_all()

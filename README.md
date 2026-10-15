@@ -35,6 +35,10 @@ The app opens its settings window and adds an icon to the system tray (by the cl
 - Black screen (instant wake) or use your monitors' own power saving
 - Optionally power the displays off after they've been black for a while
 
+**Detection**
+- Choose what counts as you being at your desk: **head**, **eyes**, and **keyboard & mouse** — each can be switched off (all on by default, at least one stays on)
+- The keyboard and mouse always wake a black screen, even when they don't count as being there
+
 **Everything else**
 - **Lock now** and **Black out now** buttons, in the app and in the tray menu
 - Lives in the system tray, starts with Windows, and uses very little CPU (well under 1% of one core) and about 30 MB of RAM
@@ -46,7 +50,8 @@ The app opens its settings window and adds an icon to the system tray (by the cl
 | | |
 |---|---|
 | ![Lock](screenshots/2-lock.png) | ![Black out](screenshots/3-black-out.png) |
-| ![Screens](screenshots/4-screens.png) | ![General](screenshots/5-general.png) |
+| ![Screens](screenshots/4-screens.png) | ![Detection](screenshots/6-detection.png) |
+| ![General](screenshots/5-general.png) | |
 
 ## Default settings
 
@@ -55,6 +60,7 @@ The app opens its settings window and adds an icon to the system tray (by the cl
 | Lock my PC when I walk away | **Off** (locks after 5 minutes when switched on) |
 | Black out my screens when I walk away | On — instantly, no transition |
 | Screens | All |
+| Detection | Head, eyes, and keyboard & mouse all on |
 | Start with Windows | On |
 
 ## Run from source
