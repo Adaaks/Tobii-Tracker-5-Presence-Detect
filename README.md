@@ -29,7 +29,7 @@ The app opens its settings window and adds an icon to the system tray (by the cl
 - **Keep the screens dark while locked** — the Windows lock screen can't be covered, so the displays are switched off while you're away and back on when you return
 
 **Black out**
-- Go black instantly, after a few seconds, after minutes, or type your own
+- Go black instantly, after 5 s, 15 s, 30 s, 1, 2, 5, 10 or 15 minutes, or type your own
 - **Instant**, **fade out**, or **dim, then black** (a heads-up dim before it goes fully black) — the fade runs at your monitor's refresh rate
 - Pick which screens go black on a map of your monitors
 - Black screen (instant wake) or use your monitors' own power saving
@@ -49,7 +49,7 @@ The app opens its settings window and adds an icon to the system tray (by the cl
 
 | | |
 |---|---|
-| ![Lock](screenshots/lock.png) | ![Black out](screenshots/black-out-wait.png) |
+| ![Lock](screenshots/lock.png) | ![Black out](screenshots/black-out-times.png) |
 | ![Screens](screenshots/screens.png) | ![Detection](screenshots/detection.png) |
 | ![General](screenshots/general.png) | |
 
